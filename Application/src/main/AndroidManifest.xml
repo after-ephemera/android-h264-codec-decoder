@@ -19,6 +19,8 @@
     package="com.example.android.basicmediadecoder"
     android:versionCode="1"
     android:versionName="1.0">
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <!-- Min/target SDK versions (<uses-sdk>) managed by build.gradle -->
     

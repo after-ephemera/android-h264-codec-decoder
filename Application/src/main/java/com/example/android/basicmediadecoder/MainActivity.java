@@ -17,12 +17,14 @@
 package com.example.android.basicmediadecoder;
 
 
+import android.Manifest;
 import android.animation.TimeAnimator;
 import android.app.Activity;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -83,12 +85,25 @@ public class MainActivity extends Activity {
         }
     }
 
+    private static final int REQUEST_EXTERNAL_STORAGE = 1;
+    private static String[] PERMISSIONS_STORAGE = {
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+    };
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == R.id.menu_play) {
             mAttribView.setVisibility(View.VISIBLE);
-            startPlayback();
-            item.setEnabled(false);
+            ActivityCompat.requestPermissions(
+                    this,
+                    PERMISSIONS_STORAGE,
+                    REQUEST_EXTERNAL_STORAGE
+            );
+            EncodeAndMuxTest e = new EncodeAndMuxTest();
+            e.testEncodeVideoToMp4();
+//            startPlayback();
+//            item.setEnabled(false);
         }
         return true;
     }
@@ -99,7 +114,7 @@ public class MainActivity extends Activity {
         // Construct a URI that points to the video resource that we want to play
         Uri videoUri = Uri.parse("android.resource://"
                 + getPackageName() + "/"
-                + R.raw.vid_bigbuckbunny);
+                + R.raw.sw);
 
         try {
 
