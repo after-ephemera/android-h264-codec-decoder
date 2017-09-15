@@ -20,11 +20,16 @@ package com.example.android.basicmediadecoder;
 import android.Manifest;
 import android.animation.TimeAnimator;
 import android.app.Activity;
+import android.graphics.SurfaceTexture;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -34,14 +39,22 @@ import android.view.View;
 import android.widget.TextView;
 
 import com.example.android.common.media.MediaCodecWrapper;
+import com.example.android.common.media.MyDataSource;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 
 /**
  * This activity uses a {@link android.view.TextureView} to render the frames of a video decoded using
  * {@link android.media.MediaCodec} API.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements TextureView.SurfaceTextureListener {
 
     private TextureView mPlaybackView;
     private TimeAnimator mTimeAnimator = new TimeAnimator();
@@ -49,8 +62,13 @@ public class MainActivity extends Activity {
     // A utility that wraps up the underlying input and output buffer processing operations
     // into an east to use API.
     private MediaCodecWrapper mCodecWrapper;
+    private MediaCodec mediaCodec;
     private MediaExtractor mExtractor = new MediaExtractor();
     TextView mAttribView = null;
+
+    private NALParser nalParser;
+
+    private MyDataSource dataSource;
 
 
     /**
@@ -61,7 +79,45 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.sample_main);
         mPlaybackView = (TextureView) findViewById(R.id.PlaybackView);
-        mAttribView =  (TextView)findViewById(R.id.AttribView);
+        mPlaybackView.setSurfaceTextureListener(this);
+//        mAttribView =  (TextView)findViewById(R.id.AttribView);
+    }
+
+    @Override
+    public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+        InputStream inputStream = getResources().openRawResource(R.raw.test);
+        nalParser = new NALParser(inputStream);
+
+        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 480, 640);
+//        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 100000);
+        byte[] header_sps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x27, (byte) 0x4D, (byte) 0x00, (byte) 0x1E, (byte) 0xAB, (byte) 0x60, (byte) 0xF0, (byte) 0x28, (byte) 0xD3, (byte) 0x50, (byte) 0x20, (byte) 0x20, (byte) 0x2A, (byte) 0x40, (byte) 0x80 };
+        byte[] header_pps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x28, (byte) 0xEE, (byte) 0x3C, (byte) 0x30 };
+        format.setByteBuffer("csd-0", ByteBuffer.wrap(header_sps));
+        format.setByteBuffer("csd-1", ByteBuffer.wrap(header_pps));
+
+        try {
+            mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+            mediaCodec.configure(format, new Surface(mPlaybackView.getSurfaceTexture()), null, 0);
+            mediaCodec.start();
+            startPlayback();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    @Override
+    public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+
+    }
+
+    @Override
+    public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+        return false;
+    }
+
+    @Override
+    public void onSurfaceTextureUpdated(SurfaceTexture surface) {
 
     }
 
@@ -94,111 +150,115 @@ public class MainActivity extends Activity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == R.id.menu_play) {
-            mAttribView.setVisibility(View.VISIBLE);
+//            mAttribView.setVisibility(View.VISIBLE);
             ActivityCompat.requestPermissions(
                     this,
                     PERMISSIONS_STORAGE,
                     REQUEST_EXTERNAL_STORAGE
             );
-            EncodeAndMuxTest e = new EncodeAndMuxTest();
-            e.testEncodeVideoToMp4();
-//            startPlayback();
-//            item.setEnabled(false);
+//            EncodeAndMuxTest e = new EncodeAndMuxTest();
+//            e.testEncodeVideoToMp4();
+//            try {
+//                dataSource = new MyDataSource(inputStream);
+//            } catch (Throwable throwable) {
+//                Log.e("jk", throwable.getMessage());
+//                throwable.printStackTrace();
+//            }
+            startPlayback();
+            item.setEnabled(false);
         }
         return true;
     }
 
 
+    long startMS;
     public void startPlayback() {
-
-        // Construct a URI that points to the video resource that we want to play
-        Uri videoUri = Uri.parse("android.resource://"
-                + getPackageName() + "/"
-                + R.raw.sw);
-
-        try {
-
-            // BEGIN_INCLUDE(initialize_extractor)
-            mExtractor.setDataSource(this, videoUri, null);
-            int nTracks = mExtractor.getTrackCount();
-
-            // Begin by unselecting all of the tracks in the extractor, so we won't see
-            // any tracks that we haven't explicitly selected.
-            for (int i = 0; i < nTracks; ++i) {
-                mExtractor.unselectTrack(i);
-            }
+        startMS = System.currentTimeMillis();
 
 
-            // Find the first video track in the stream. In a real-world application
-            // it's possible that the stream would contain multiple tracks, but this
-            // sample assumes that we just want to play the first one.
-            for (int i = 0; i < nTracks; ++i) {
-                // Try to create a video codec for this track. This call will return null if the
-                // track is not a video track, or not a recognized video format. Once it returns
-                // a valid MediaCodecWrapper, we can break out of the loop.
-                mCodecWrapper = MediaCodecWrapper.fromVideoFormat(mExtractor.getTrackFormat(i),
-                        new Surface(mPlaybackView.getSurfaceTexture()));
-                if (mCodecWrapper != null) {
-                    mExtractor.selectTrack(i);
-                    break;
-                }
-            }
-            // END_INCLUDE(initialize_extractor)
+        NALBuffer nb = nalParser.getNext();
+        NALBuffer nb2 = nalParser.getNext();
+        int size = nb.size + nb2.size;
+        ByteBuffer trueBuffer = ByteBuffer.allocate(size);
+        trueBuffer.put(nb.buffer);
+        trueBuffer.put(nb2.buffer);
 
 
-
-
-            // By using a {@link TimeAnimator}, we can sync our media rendering commands with
-            // the system display frame rendering. The animator ticks as the {@link Choreographer}
-            // receives VSYNC events.
-            mTimeAnimator.setTimeListener(new TimeAnimator.TimeListener() {
-                @Override
-                public void onTimeUpdate(final TimeAnimator animation,
-                                         final long totalTime,
-                                         final long deltaTime) {
-
-                    boolean isEos = ((mExtractor.getSampleFlags() & MediaCodec
-                            .BUFFER_FLAG_END_OF_STREAM) == MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-
-                    // BEGIN_INCLUDE(write_sample)
-                    if (!isEos) {
-                        // Try to submit the sample to the codec and if successful advance the
-                        // extractor to the next available sample to read.
-                        boolean result = mCodecWrapper.writeSample(mExtractor, false,
-                                mExtractor.getSampleTime(), mExtractor.getSampleFlags());
-
-                        if (result) {
-                            // Advancing the extractor is a blocking operation and it MUST be
-                            // executed outside the main thread in real applications.
-                            mExtractor.advance();
-                        }
-                    }
-                    // END_INCLUDE(write_sample)
-
-                    // Examine the sample at the head of the queue to see if its ready to be
-                    // rendered and is not zero sized End-of-Stream record.
-                    MediaCodec.BufferInfo out_bufferInfo = new MediaCodec.BufferInfo();
-                    mCodecWrapper.peekSample(out_bufferInfo);
-
-                    // BEGIN_INCLUDE(render_sample)
-                    if (out_bufferInfo.size <= 0 && isEos) {
-                        mTimeAnimator.end();
-                        mCodecWrapper.stopAndRelease();
-                        mExtractor.release();
-                    } else if (out_bufferInfo.presentationTimeUs / 1000 < totalTime) {
-                        // Pop the sample off the queue and send it to {@link Surface}
-                        mCodecWrapper.popSample(true);
-                    }
-                    // END_INCLUDE(render_sample)
-
-                }
-            });
-
-            // We're all set. Kick off the animator to process buffers and render video frames as
-            // they become available
-            mTimeAnimator.start();
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (nb == null) {
+            Log.e("Main", "Couldn't get NAL");
+//            throw new Exception("Failed");
+            return;
         }
+        ByteBuffer frame = nb.buffer.duplicate();
+
+        int inputIndex;
+        while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
+//            Log.d("Main", "Input index: " + inputIndex);
+        }
+
+//        ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
+//        codecBuffer.put(trueBuffer);
+//        long presentationTimeMS = System.currentTimeMillis() - startMS;
+//        mediaCodec.queueInputBuffer(inputIndex, 0, size, presentationTimeMS, MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
+//
+//        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+//        int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
+//        if (outputIndex >= 0) {
+//            mediaCodec.releaseOutputBuffer(outputIndex, true);
+//        }
+        Log.e("Main", "---------------------");
+
+        while(true) {
+
+             nb = nalParser.getNext();
+            if (nb == null) {
+                Log.e("Main", "Couldn't get NAL");
+//            throw new Exception("Failed");
+                return;
+            }
+
+             //Check type and load buffer based on type.
+            try {
+                int type = nb.buffer.get(5) & 0x1f; // Low 5 bits of the 5th byte gives the type identifier.
+                if(type == 0x06) continue;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+             frame = nb.buffer.duplicate();
+
+            while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
+                Log.d("Main", "Input index: " + inputIndex);
+            }
+            Log.d("Main", "Final Input index: " + inputIndex);
+
+            ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
+            codecBuffer.put(frame);
+            long presentationTimeMS = System.currentTimeMillis() - startMS;
+            mediaCodec.queueInputBuffer(inputIndex, 0, nb.size+1, presentationTimeMS, 0);
+
+             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+            int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
+            if (outputIndex >= 0) {
+                mediaCodec.releaseOutputBuffer(outputIndex, true);
+            }
+        }
+    }
+
+    private int checkNALType(int type) throws Exception {
+        type = type & 0x1f;
+        System.out.println("Type: " + String.format("0x%02X", type));
+        switch(type){
+            case 0x01: // P Frame - Coded slice of a non-IDR picture (VCL)
+                break;
+            case 0x05: // I Frame - Coded slice of an IDR picture (VCL)
+                break;
+            case 0x07: // SPS Parameter - Sequence parameter set (non-VCL)
+                break;
+            case 0x08: // PPS Parameter - Picture parameter set (non-VCL)
+                break;
+            default:
+                throw new Exception("Failed to determine NAL Unit type with type number " + type);
+        }
+        return -1;
     }
 }
