@@ -25,6 +25,7 @@ import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
@@ -67,6 +68,8 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     TextView mAttribView = null;
 
     private NALParser nalParser;
+    private Boolean textureReady = false;
+    DecodeFrameTask frameTask;
 
     private MyDataSource dataSource;
 
@@ -80,7 +83,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         setContentView(R.layout.sample_main);
         mPlaybackView = (TextureView) findViewById(R.id.PlaybackView);
         mPlaybackView.setSurfaceTextureListener(this);
-//        mAttribView =  (TextView)findViewById(R.id.AttribView);
+        frameTask = new DecodeFrameTask();
     }
 
     @Override
@@ -88,10 +91,16 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         InputStream inputStream = getResources().openRawResource(R.raw.test);
         nalParser = new NALParser(inputStream);
 
-        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 480, 640);
+        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
+                480, 640);
 //        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 100000);
-        byte[] header_sps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x27, (byte) 0x4D, (byte) 0x00, (byte) 0x1E, (byte) 0xAB, (byte) 0x60, (byte) 0xF0, (byte) 0x28, (byte) 0xD3, (byte) 0x50, (byte) 0x20, (byte) 0x20, (byte) 0x2A, (byte) 0x40, (byte) 0x80 };
-        byte[] header_pps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x28, (byte) 0xEE, (byte) 0x3C, (byte) 0x30 };
+        format.setInteger(MediaFormat.KEY_FRAME_RATE, 10);
+        byte[] header_sps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x27,
+                              (byte) 0x4D, (byte) 0x00, (byte) 0x1E, (byte) 0xAB, (byte) 0x60,
+                              (byte) 0xF0, (byte) 0x28, (byte) 0xD3, (byte) 0x50, (byte) 0x20,
+                              (byte) 0x20, (byte) 0x2A, (byte) 0x40, (byte) 0x80 };
+        byte[] header_pps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x28,
+                              (byte) 0xEE, (byte) 0x3C, (byte) 0x30 };
         format.setByteBuffer("csd-0", ByteBuffer.wrap(header_sps));
         format.setByteBuffer("csd-1", ByteBuffer.wrap(header_pps));
 
@@ -99,7 +108,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
             mediaCodec.configure(format, new Surface(mPlaybackView.getSurfaceTexture()), null, 0);
             mediaCodec.start();
-            startPlayback();
+            textureReady = true;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -156,16 +165,15 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                     PERMISSIONS_STORAGE,
                     REQUEST_EXTERNAL_STORAGE
             );
-//            EncodeAndMuxTest e = new EncodeAndMuxTest();
-//            e.testEncodeVideoToMp4();
-//            try {
-//                dataSource = new MyDataSource(inputStream);
-//            } catch (Throwable throwable) {
-//                Log.e("jk", throwable.getMessage());
-//                throwable.printStackTrace();
-//            }
-            startPlayback();
-            item.setEnabled(false);
+            if(textureReady){
+                Boolean canRun = true;
+                if(frameTask.getStatus() == AsyncTask.Status.RUNNING){
+                    frameTask.cancel(true);
+                    Log.w("Main", "Can run: " + canRun);
+                }
+                frameTask = new DecodeFrameTask();
+                frameTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+            }
         }
         return true;
     }
@@ -175,42 +183,42 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     public void startPlayback() {
         startMS = System.currentTimeMillis();
 
+        NALBuffer sps;
+        // Get NAL Units until an SPS unit is found.
+        while(true){
+            sps = nalParser.getNext();
+            Log.d("Main", "searching for an SPS frame...");
+            if((sps.buffer.get(5) & 0x1f) != 0x07){
+                // Found SPS!
+                Log.d("Main", "Found an SPS Frame");
+                break;
+            }
+        }
 
-        NALBuffer nb = nalParser.getNext();
         NALBuffer nb2 = nalParser.getNext();
-        int size = nb.size + nb2.size;
+        int size = sps.size + nb2.size;
         ByteBuffer trueBuffer = ByteBuffer.allocate(size);
-        trueBuffer.put(nb.buffer);
+        trueBuffer.put(sps.buffer);
         trueBuffer.put(nb2.buffer);
 
 
-        if (nb == null) {
+        if (sps == null) {
             Log.e("Main", "Couldn't get NAL");
 //            throw new Exception("Failed");
             return;
         }
-        ByteBuffer frame = nb.buffer.duplicate();
+        ByteBuffer frame = sps.buffer.duplicate();
 
         int inputIndex;
         while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
 //            Log.d("Main", "Input index: " + inputIndex);
         }
 
-//        ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
-//        codecBuffer.put(trueBuffer);
-//        long presentationTimeMS = System.currentTimeMillis() - startMS;
-//        mediaCodec.queueInputBuffer(inputIndex, 0, size, presentationTimeMS, MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
-//
-//        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-//        int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
-//        if (outputIndex >= 0) {
-//            mediaCodec.releaseOutputBuffer(outputIndex, true);
-//        }
-        Log.e("Main", "---------------------");
+        Log.e("Main", "CONFIG FRAMES ABOVE THIS POINT ---------------------");
 
         while(true) {
 
-             nb = nalParser.getNext();
+             NALBuffer nb = nalParser.getNext();
             if (nb == null) {
                 Log.e("Main", "Couldn't get NAL");
 //            throw new Exception("Failed");
@@ -219,8 +227,8 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
              //Check type and load buffer based on type.
             try {
-                int type = nb.buffer.get(5) & 0x1f; // Low 5 bits of the 5th byte gives the type identifier.
-                if(type == 0x06) continue;
+//                int type = nb.buffer.get(5) & 0x1f; // Low 5 bits of the 5th byte gives the type identifier.
+//                if(type == 0x06) continue;
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -234,13 +242,39 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
             codecBuffer.put(frame);
             long presentationTimeMS = System.currentTimeMillis() - startMS;
-            mediaCodec.queueInputBuffer(inputIndex, 0, nb.size+1, presentationTimeMS, 0);
+
+            int flags = 0;
+            // If this is the final NAL Unit we can signify the end of the stream.
+            if(nb.lastNAL){
+                flags = MediaCodec.BUFFER_FLAG_END_OF_STREAM;
+            }
+            mediaCodec.queueInputBuffer(inputIndex, 0, nb.size+1, 0, flags);
 
              MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
             int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
             if (outputIndex >= 0) {
                 mediaCodec.releaseOutputBuffer(outputIndex, true);
             }
+        }
+    }
+
+    private class DecodeFrameTask extends AsyncTask<String, String, String> {
+
+        @Override
+        protected String doInBackground(String... strings) {
+            startPlayback();
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(String result){
+            try{
+                mediaCodec.stop();
+                mediaCodec.release();
+            } catch (Exception e){
+                e.printStackTrace();
+            }
+//            nalParser.release();
         }
     }
 

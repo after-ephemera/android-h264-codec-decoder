@@ -114,7 +114,9 @@ public class NALParser{
                 val = inputStream.read();
                 bytesRead++;
             }
-            System.out.println("Reached EOF without finding a match.");
+            // TODO: Actually return the last NAL here.
+            System.out.println("Reached EOF without finding a match. Returning last NAL Unit");
+            return new NALBuffer(ByteBuffer.wrap(resultBuffer.toByteArray()), resultBuffer.size(), true);
         } catch (Exception e) {
             e.printStackTrace();
         }
