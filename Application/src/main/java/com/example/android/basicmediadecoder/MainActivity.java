@@ -44,11 +44,15 @@ import com.example.android.common.media.MyDataSource;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.DatagramSocket;
+import java.net.SocketException;
 import java.nio.ByteBuffer;
 
 /**
@@ -65,11 +69,11 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     private MediaCodecWrapper mCodecWrapper;
     private MediaCodec mediaCodec;
     private MediaExtractor mExtractor = new MediaExtractor();
-    TextView mAttribView = null;
 
     private NALParser nalParser;
     private Boolean textureReady = false;
     DecodeFrameTask frameTask;
+    MenuItem playButton;
 
     private MyDataSource dataSource;
 
@@ -88,31 +92,17 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-        InputStream inputStream = getResources().openRawResource(R.raw.test);
-        nalParser = new NALParser(inputStream);
-
-        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
-                480, 640);
-//        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 100000);
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, 10);
-        byte[] header_sps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x27,
-                              (byte) 0x4D, (byte) 0x00, (byte) 0x1E, (byte) 0xAB, (byte) 0x60,
-                              (byte) 0xF0, (byte) 0x28, (byte) 0xD3, (byte) 0x50, (byte) 0x20,
-                              (byte) 0x20, (byte) 0x2A, (byte) 0x40, (byte) 0x80 };
-        byte[] header_pps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x28,
-                              (byte) 0xEE, (byte) 0x3C, (byte) 0x30 };
-        format.setByteBuffer("csd-0", ByteBuffer.wrap(header_sps));
-        format.setByteBuffer("csd-1", ByteBuffer.wrap(header_pps));
-
+        // Set up the UDP socket for receiving data.
         try {
-            mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
-            mediaCodec.configure(format, new Surface(mPlaybackView.getSurfaceTexture()), null, 0);
-            mediaCodec.start();
-            textureReady = true;
-        } catch (IOException e) {
+            DatagramSocket clientSocket = new DatagramSocket(1900);
+//            clientSocket.getInputStream();
+        } catch (SocketException e) {
             e.printStackTrace();
         }
 
+        InputStream inputStream = getResources().openRawResource(R.raw.test);
+        nalParser = new NALParser(inputStream);
+        textureReady = true;
     }
 
     @Override
@@ -134,6 +124,8 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     public boolean onCreateOptionsMenu(Menu menu) {
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.action_menu, menu);
+        playButton = menu.getItem(0);
+//        playButton.setEnabled(false);
         return true;
     }
 
@@ -183,6 +175,17 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     public void startPlayback() {
         startMS = System.currentTimeMillis();
 
+        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
+                480, 640);
+//        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 100000);
+//        format.setInteger(MediaFormat.KEY_FRAME_RATE, 10);
+//        byte[] header_sps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x27,
+//                              (byte) 0x4D, (byte) 0x00, (byte) 0x1E, (byte) 0xAB, (byte) 0x60,
+//                              (byte) 0xF0, (byte) 0x28, (byte) 0xD3, (byte) 0x50, (byte) 0x20,
+//                              (byte) 0x20, (byte) 0x2A, (byte) 0x40, (byte) 0x80 };
+//        byte[] header_pps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x28,
+//                              (byte) 0xEE, (byte) 0x3C, (byte) 0x30 };
+
         NALBuffer sps;
         // Get NAL Units until an SPS unit is found.
         while(true){
@@ -195,11 +198,13 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             }
         }
 
-        NALBuffer nb2 = nalParser.getNext();
-        int size = sps.size + nb2.size;
-        ByteBuffer trueBuffer = ByteBuffer.allocate(size);
-        trueBuffer.put(sps.buffer);
-        trueBuffer.put(nb2.buffer);
+        NALBuffer pps = nalParser.getNext();
+//        NALBuffer next = nalParser.getNext();
+        int size = sps.size + pps.size /*+ next.size*/;
+//        ByteBuffer trueBuffer = ByteBuffer.allocate(size);
+//        trueBuffer.put(sps.buffer.duplicate());
+//        trueBuffer.put(pps.buffer.duplicate());
+//        trueBuffer.put(next.buffer.duplicate());
 
 
         if (sps == null) {
@@ -207,12 +212,36 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 //            throw new Exception("Failed");
             return;
         }
-        ByteBuffer frame = sps.buffer.duplicate();
+//        ByteBuffer frame = sps.buffer.duplicate();
 
-        int inputIndex;
-        while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
-//            Log.d("Main", "Input index: " + inputIndex);
+
+        format.setByteBuffer("csd-0", sps.buffer);
+        format.setByteBuffer("csd-1", pps.buffer);
+
+        try {
+            mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+            mediaCodec.configure(format, new Surface(mPlaybackView.getSurfaceTexture()), null, 0);
+            mediaCodec.start();
+            textureReady = true;
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+
+//        int inputIndex;
+//        while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
+////            Log.d("Main", "Input index: " + inputIndex);
+//        }
+//
+//        ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
+//        codecBuffer.put(trueBuffer);
+//
+//        mediaCodec.queueInputBuffer(inputIndex, 0, size+1, 0, MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
+//
+//        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+//        int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
+//        if (outputIndex >= 0) {
+//            mediaCodec.releaseOutputBuffer(outputIndex, true);
+//        }
 
         Log.e("Main", "CONFIG FRAMES ABOVE THIS POINT ---------------------");
 
@@ -232,8 +261,9 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             } catch (Exception e) {
                 e.printStackTrace();
             }
-             frame = nb.buffer.duplicate();
+            ByteBuffer frame = nb.buffer.duplicate();
 
+            int inputIndex;
             while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
                 Log.d("Main", "Input index: " + inputIndex);
             }
@@ -250,7 +280,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             }
             mediaCodec.queueInputBuffer(inputIndex, 0, nb.size+1, 0, flags);
 
-             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+            MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
             int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
             if (outputIndex >= 0) {
                 mediaCodec.releaseOutputBuffer(outputIndex, true);
