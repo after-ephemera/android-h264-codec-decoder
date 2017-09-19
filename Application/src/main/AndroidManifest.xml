@@ -21,6 +21,8 @@
     android:versionName="1.0">
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
 
     <!-- Min/target SDK versions (<uses-sdk>) managed by build.gradle -->
     

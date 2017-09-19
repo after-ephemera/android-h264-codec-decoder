@@ -47,6 +47,8 @@ import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -74,6 +76,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     private Boolean textureReady = false;
     DecodeFrameTask frameTask;
     MenuItem playButton;
+    FileOutputStream fos = null;
 
     private MyDataSource dataSource;
 
@@ -92,16 +95,17 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+        UDPInputStream inputStream;
         // Set up the UDP socket for receiving data.
         try {
             DatagramSocket clientSocket = new DatagramSocket(1900);
-//            clientSocket.getInputStream();
+//        InputStream inputStream = getResources().openRawResource(R.raw.test);
+            inputStream = new UDPInputStream(clientSocket);
+            nalParser = new NALParser(inputStream);
         } catch (SocketException e) {
             e.printStackTrace();
         }
 
-        InputStream inputStream = getResources().openRawResource(R.raw.test);
-        nalParser = new NALParser(inputStream);
         textureReady = true;
     }
 
@@ -175,6 +179,13 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     public void startPlayback() {
         startMS = System.currentTimeMillis();
 
+        File fileOut = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "testFrameOutput.h264");
+        try {
+            fos = new FileOutputStream(fileOut, true);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
                 480, 640);
 //        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 100000);
@@ -217,6 +228,12 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         format.setByteBuffer("csd-0", sps.buffer);
         format.setByteBuffer("csd-1", pps.buffer);
+        try {
+            fos.write(sps.buffer.array());
+            fos.write(pps.buffer.array());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
         try {
             mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
@@ -271,6 +288,13 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
             ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
             codecBuffer.put(frame);
+
+            try {
+                fos.write(frame.array());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
             long presentationTimeMS = System.currentTimeMillis() - startMS;
 
             int flags = 0;
@@ -324,5 +348,15 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                 throw new Exception("Failed to determine NAL Unit type with type number " + type);
         }
         return -1;
+    }
+
+    @Override
+    protected void onStop() {
+        try {
+            fos.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        super.onStop();
     }
 }
