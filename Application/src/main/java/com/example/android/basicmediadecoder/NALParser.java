@@ -8,8 +8,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
-import java.util.PriorityQueue;
 
 /**
  * Created by jkjensen on 9/13/17.
@@ -26,28 +26,33 @@ public class NALParser {
 
     // The inputStream representing the h.264 stream being read in.
     private InputStream inputStream;
-    private PriorityQueue<ByteBuffer> q;
 
     public NALParser(InputStream inputStreamIn) {
-        try {
-            inputStream = inputStreamIn;
-//            inputStream = new FileInputStream("test.264");
-            inputStream.skip(4l);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+//        try {
+//            inputStream = inputStreamIn;
+////            inputStream = new FileInputStream("test.264");
+//            inputStream.skip(4l);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
     }
 
-    public NALBuffer getNext() {
+    public NALBuffer getNext(ByteBuffer currentFrame) {
         try {
 //            inputStream = new FileInputStream("test.264");
+            // skip the first four bytes
+            currentFrame.get();
+            currentFrame.get();
+            currentFrame.get();
+            currentFrame.get();
 
             int val;
             int bytesRead = 0;
-            val = inputStream.read();
+//            val = inputStream.read();
+            val = currentFrame.get();
             bytesRead++;
             int type = val;
-            System.out.println("Type: " + String.format("0x%02X", type & 0x1f));
+//            System.out.println("Type: " + String.format("0x%02X", type & 0x1f));
 
 //            ByteBuffer resultBuffer = ByteBuffer.allocate(200000);
             ByteArrayOutputStream resultBuffer = new ByteArrayOutputStream();
@@ -59,7 +64,7 @@ public class NALParser {
             resultBuffer.write(0x01);
             bytesRead += 4;
 
-            while (val != -1) {
+            while (true) {
                 if (val == match[0]) {
                     // System.out.println("Found potential match!");
                     // Clear the buffer so we are starting fresh.
@@ -71,7 +76,12 @@ public class NALParser {
                     // Check the following bytes to determine if they match the pattern.
                     for (int j = 1; j < match.length; j++) {
                         // Put the byte onto the match buffer first, and read the next one.
-                        val = inputStream.read();
+//                        val = inputStream.read();
+                        try {
+                            val = currentFrame.get();
+                        } catch (BufferUnderflowException e){
+                            return new NALBuffer(ByteBuffer.wrap(resultBuffer.toByteArray()), resultBuffer.size());
+                        }
 //                        System.out.println(String.format("0x%02X", val));
                         matchBuffer.put((byte) val);
                         // bytesRead++;
@@ -95,7 +105,7 @@ public class NALParser {
                             break;
                         } else if (j == match.length - 1) {
                             // We have a full match.
-                            System.out.println("Found a match, finished reading frame.");
+//                            System.out.println("Found a match, finished reading frame.");
 //                            System.out.println("Bytes read: "+ bytesRead);
                             int k = 0;
 //                            System.out.println("Final resultBuffer position: " + resultBuffer.size());
@@ -118,47 +128,29 @@ public class NALParser {
                     resultBuffer.write((byte) val);
 //                    System.out.println(String.format("0x%02X", val));
                 }
-                val = inputStream.read();
+//                val = inputStream.read();
+                try {
+                    val = currentFrame.get();
+                } catch (BufferUnderflowException e){
+                    return new NALBuffer(ByteBuffer.wrap(resultBuffer.toByteArray()), resultBuffer.size());
+                }
                 bytesRead++;
             }
             // TODO: Actually return the last NAL here.
-            System.out.println("Reached EOF without finding a match. Returning last NAL Unit. Bytes read: " + bytesRead);
+//            System.out.println("Reached EOF without finding a match. Returning last NAL Unit. Bytes read: " + bytesRead);
 
-            ByteBuffer printBuffer = ByteBuffer.wrap(resultBuffer.toByteArray());
-            printBuffer.rewind();
+//            ByteBuffer printBuffer = ByteBuffer.wrap(resultBuffer.toByteArray());
+//            printBuffer.rewind();
 //                             Read out the entire result.
-            int k = 0;
+//            int k = 0;
 //            while (k != bytesRead -1){
 //                System.out.print(" " + String.format("0x%02X", printBuffer.get()));
 //                k++;
 //            }
-            return new NALBuffer(ByteBuffer.wrap(resultBuffer.toByteArray()), resultBuffer.size(), true);
+//            return new NALBuffer(ByteBuffer.wrap(resultBuffer.toByteArray()), resultBuffer.size(), true);
         } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
-    }
-
-    private class PacketReceiverTask extends AsyncTask<String, String, String> {
-        private DatagramSocket dSocket;
-        private DatagramPacket dPacket;
-
-        public PacketReceiverTask(){
-            byte[] buff = new byte[65535];
-            dPacket = new DatagramPacket(buff, 65535);
-        }
-
-        @Override
-        protected String doInBackground(String... strings) {
-            // Continuously receive packets and put them on a priorityqueue
-            while(true){
-                try {
-                    dSocket.receive(dPacket);
-                    q.add(ByteBuffer.wrap(dPacket.getData(), dPacket.getOffset(), dPacket.getLength()));
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
     }
 }

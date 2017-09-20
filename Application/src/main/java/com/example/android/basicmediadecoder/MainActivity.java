@@ -18,17 +18,14 @@ package com.example.android.basicmediadecoder;
 
 
 import android.Manifest;
-import android.animation.TimeAnimator;
 import android.app.Activity;
 import android.graphics.SurfaceTexture;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
-import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
-import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
 import android.util.Log;
 import android.view.Menu;
@@ -36,39 +33,27 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.Surface;
 import android.view.TextureView;
-import android.view.View;
-import android.widget.TextView;
 
-import com.example.android.common.media.MediaCodecWrapper;
-import com.example.android.common.media.MyDataSource;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
+import java.util.PriorityQueue;
 
 /**
  * This activity uses a {@link android.view.TextureView} to render the frames of a video decoded using
  * {@link android.media.MediaCodec} API.
  */
 public class MainActivity extends Activity implements TextureView.SurfaceTextureListener {
+    private final static int QUEUE_INITIAL_SIZE = 50;
 
+    // The surface that broadcast will be shown on.
     private TextureView mPlaybackView;
-    private TimeAnimator mTimeAnimator = new TimeAnimator();
-
-    // A utility that wraps up the underlying input and output buffer processing operations
-    // into an east to use API.
-    private MediaCodecWrapper mCodecWrapper;
     private MediaCodec mediaCodec;
     private MediaExtractor mExtractor = new MediaExtractor();
 
@@ -76,9 +61,10 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     private Boolean textureReady = false;
     DecodeFrameTask frameTask;
     MenuItem playButton;
-    FileOutputStream fos = null;
+    FileOutputStream fileOutputStream = null;
+    DatagramSocket clientSocket;
 
-    private MyDataSource dataSource;
+    private final PriorityQueue<ByteBuffer> nalQueue = new PriorityQueue<>(QUEUE_INITIAL_SIZE);
 
 
     /**
@@ -95,13 +81,12 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-        UDPInputStream inputStream;
         // Set up the UDP socket for receiving data.
         try {
-            DatagramSocket clientSocket = new DatagramSocket(1900);
+            clientSocket = new DatagramSocket(1900);
 //        InputStream inputStream = getResources().openRawResource(R.raw.test);
-            inputStream = new UDPInputStream(clientSocket);
-            nalParser = new NALParser(inputStream);
+//            inputStream = new UDPInputStream(clientSocket);
+            nalParser = new NALParser(null);
         } catch (SocketException e) {
             e.printStackTrace();
         }
@@ -136,14 +121,6 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     @Override
     protected void onPause() {
         super.onPause();
-        if(mTimeAnimator != null && mTimeAnimator.isRunning()) {
-            mTimeAnimator.end();
-        }
-
-        if (mCodecWrapper != null ) {
-            mCodecWrapper.stopAndRelease();
-            mExtractor.release();
-        }
     }
 
     private static final int REQUEST_EXTERNAL_STORAGE = 1;
@@ -162,11 +139,11 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                     REQUEST_EXTERNAL_STORAGE
             );
             if(textureReady){
-                Boolean canRun = true;
                 if(frameTask.getStatus() == AsyncTask.Status.RUNNING){
                     frameTask.cancel(true);
-                    Log.w("Main", "Can run: " + canRun);
                 }
+                PacketReceiverTask packetReceiverTask = new PacketReceiverTask();
+                packetReceiverTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
                 frameTask = new DecodeFrameTask();
                 frameTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
             }
@@ -181,7 +158,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         File fileOut = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "testFrameOutput.h264");
         try {
-            fos = new FileOutputStream(fileOut, true);
+            fileOutputStream = new FileOutputStream(fileOut, true);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
@@ -200,37 +177,24 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         NALBuffer sps;
         // Get NAL Units until an SPS unit is found.
         while(true){
-            sps = nalParser.getNext();
+            while(peekQueue() == null);
+            sps = nalParser.getNext(pollQueue());
             Log.d("Main", "searching for an SPS frame...");
-            if((sps.buffer.get(5) & 0x1f) != 0x07){
+            if((sps.buffer.get(4) & 0x1f) == 0x07){
                 // Found SPS!
                 Log.d("Main", "Found an SPS Frame");
                 break;
             }
         }
 
-        NALBuffer pps = nalParser.getNext();
-//        NALBuffer next = nalParser.getNext();
-        int size = sps.size + pps.size /*+ next.size*/;
-//        ByteBuffer trueBuffer = ByteBuffer.allocate(size);
-//        trueBuffer.put(sps.buffer.duplicate());
-//        trueBuffer.put(pps.buffer.duplicate());
-//        trueBuffer.put(next.buffer.duplicate());
-
-
-        if (sps == null) {
-            Log.e("Main", "Couldn't get NAL");
-//            throw new Exception("Failed");
-            return;
-        }
-//        ByteBuffer frame = sps.buffer.duplicate();
-
+        while(peekQueue() == null);
+        NALBuffer pps = nalParser.getNext(pollQueue());
 
         format.setByteBuffer("csd-0", sps.buffer);
         format.setByteBuffer("csd-1", pps.buffer);
         try {
-            fos.write(sps.buffer.array());
-            fos.write(pps.buffer.array());
+            fileOutputStream.write(sps.buffer.array());
+            fileOutputStream.write(pps.buffer.array());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -264,33 +228,29 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         while(true) {
 
-             NALBuffer nb = nalParser.getNext();
+            while(peekQueue() == null);
+             NALBuffer nb = nalParser.getNext(pollQueue());
             if (nb == null) {
                 Log.e("Main", "Couldn't get NAL");
 //            throw new Exception("Failed");
                 return;
             }
 
-             //Check type and load buffer based on type.
-            try {
-//                int type = nb.buffer.get(5) & 0x1f; // Low 5 bits of the 5th byte gives the type identifier.
-//                if(type == 0x06) continue;
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
             ByteBuffer frame = nb.buffer.duplicate();
 
             int inputIndex;
             while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
                 Log.d("Main", "Input index: " + inputIndex);
             }
-            Log.d("Main", "Final Input index: " + inputIndex);
+//            Log.d("Main", "Final Input index: " + inputIndex);
 
             ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
-            codecBuffer.put(frame);
+            if (codecBuffer != null) {
+                codecBuffer.put(frame);
+            }
 
             try {
-                fos.write(frame.array());
+                fileOutputStream.write(frame.array());
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -299,10 +259,10 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
             int flags = 0;
             // If this is the final NAL Unit we can signify the end of the stream.
-            if(nb.lastNAL){
-                flags = MediaCodec.BUFFER_FLAG_END_OF_STREAM;
-            }
-            mediaCodec.queueInputBuffer(inputIndex, 0, nb.size+1, 0, flags);
+//            if(nb.lastNAL){
+//                flags = MediaCodec.BUFFER_FLAG_END_OF_STREAM;
+//            }
+            mediaCodec.queueInputBuffer(inputIndex, 0, nb.size+1, presentationTimeMS, flags);
 
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
             int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
@@ -323,12 +283,59 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         @Override
         protected void onPostExecute(String result){
             try{
-                mediaCodec.stop();
-                mediaCodec.release();
+                synchronized (mediaCodec) {
+                    mediaCodec.stop();
+                    mediaCodec.release();
+                }
             } catch (Exception e){
                 e.printStackTrace();
             }
 //            nalParser.release();
+        }
+    }
+
+    private class PacketReceiverTask extends AsyncTask<String, String, String> {
+        private DatagramPacket dPacket;
+
+        public PacketReceiverTask(){
+        }
+
+        @Override
+        protected String doInBackground(String... strings) {
+            // Continuously receive packets and put them on a priorityqueue
+            while(true){
+                try {
+                    byte[] buff = new byte[100535];
+                    dPacket = new DatagramPacket(buff, 100535);
+                    clientSocket.receive(dPacket);
+//                    Log.d("PacketReceiver", "Length: " + dPacket.getLength());
+                    addToQueue(ByteBuffer.wrap(dPacket.getData(), dPacket.getOffset(), dPacket.getLength()).duplicate());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private ByteBuffer pollQueue(){
+        synchronized (nalQueue){
+            return nalQueue.poll();
+        }
+    }
+
+    private ByteBuffer peekQueue(){
+        synchronized (nalQueue){
+            return nalQueue.peek();
+        }
+    }
+
+    private boolean addToQueue(ByteBuffer b){
+        synchronized (nalQueue){
+            if(nalQueue.size() < 100) {
+                return nalQueue.add(b);
+            } else{
+                return false;
+            }
         }
     }
 
@@ -353,7 +360,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     @Override
     protected void onStop() {
         try {
-            fos.close();
+            fileOutputStream.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
