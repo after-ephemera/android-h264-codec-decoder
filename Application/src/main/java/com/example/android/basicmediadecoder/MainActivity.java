@@ -18,6 +18,7 @@ package com.example.android.basicmediadecoder;
 
 
 import android.Manifest;
+import android.animation.TimeAnimator;
 import android.app.Activity;
 import android.graphics.SurfaceTexture;
 import android.media.MediaCodec;
@@ -34,6 +35,8 @@ import android.view.MenuItem;
 import android.view.Surface;
 import android.view.TextureView;
 
+import com.example.android.common.media.MediaCodecWrapper;
+import com.example.android.common.media.MyDataSource;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -52,8 +55,12 @@ import java.util.PriorityQueue;
 public class MainActivity extends Activity implements TextureView.SurfaceTextureListener {
     private final static int QUEUE_INITIAL_SIZE = 50;
 
-    // The surface that broadcast will be shown on.
     private TextureView mPlaybackView;
+    private TimeAnimator mTimeAnimator = new TimeAnimator();
+
+    // A utility that wraps up the underlying input and output buffer processing operations
+    // into an east to use API.
+    private MediaCodecWrapper mCodecWrapper;
     private MediaCodec mediaCodec;
     private MediaExtractor mExtractor = new MediaExtractor();
 
@@ -64,6 +71,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     FileOutputStream fileOutputStream = null;
     DatagramSocket clientSocket;
 
+    private MyDataSource dataSource;
     private final PriorityQueue<ByteBuffer> nalQueue = new PriorityQueue<>(QUEUE_INITIAL_SIZE);
 
 
@@ -81,6 +89,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+        UDPInputStream inputStream;
         // Set up the UDP socket for receiving data.
         try {
             clientSocket = new DatagramSocket(1900);
@@ -114,13 +123,20 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.action_menu, menu);
         playButton = menu.getItem(0);
-//        playButton.setEnabled(false);
         return true;
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        if(mTimeAnimator != null && mTimeAnimator.isRunning()) {
+            mTimeAnimator.end();
+        }
+
+        if (mCodecWrapper != null ) {
+            mCodecWrapper.stopAndRelease();
+            mExtractor.release();
+        }
     }
 
     private static final int REQUEST_EXTERNAL_STORAGE = 1;
@@ -139,22 +155,25 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                     REQUEST_EXTERNAL_STORAGE
             );
             if(textureReady){
+                Boolean canRun = true;
                 if(frameTask.getStatus() == AsyncTask.Status.RUNNING){
                     frameTask.cancel(true);
+                    Log.w("Main", "Can run: " + canRun);
                 }
                 PacketReceiverTask packetReceiverTask = new PacketReceiverTask();
                 packetReceiverTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
                 frameTask = new DecodeFrameTask();
                 frameTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+                playButton.setEnabled(false);
             }
         }
         return true;
     }
 
 
-    long startMS;
+    long startUs;
     public void startPlayback() {
-        startMS = System.currentTimeMillis();
+        startUs = System.nanoTime() / 1000;
 
         File fileOut = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "testFrameOutput.h264");
         try {
@@ -189,6 +208,20 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         while(peekQueue() == null);
         NALBuffer pps = nalParser.getNext(pollQueue());
+        int size = sps.size + pps.size /*+ next.size*/;
+//        ByteBuffer trueBuffer = ByteBuffer.allocate(size);
+//        trueBuffer.put(sps.buffer.duplicate());
+//        trueBuffer.put(pps.buffer.duplicate());
+//        trueBuffer.put(next.buffer.duplicate());
+
+
+        if (sps == null) {
+            Log.e("Main", "Couldn't get NAL");
+//            throw new Exception("Failed");
+            return;
+        }
+//        ByteBuffer frame = sps.buffer.duplicate();
+
 
         format.setByteBuffer("csd-0", sps.buffer);
         format.setByteBuffer("csd-1", pps.buffer);
@@ -236,18 +269,23 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                 return;
             }
 
+             //Check type and load buffer based on type.
+            try {
+//                int type = nb.buffer.get(5) & 0x1f; // Low 5 bits of the 5th byte gives the type identifier.
+//                if(type == 0x06) continue;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
             ByteBuffer frame = nb.buffer.duplicate();
 
             int inputIndex;
             while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
                 Log.d("Main", "Input index: " + inputIndex);
             }
-//            Log.d("Main", "Final Input index: " + inputIndex);
+            Log.d("Main", "Final Input index: " + inputIndex);
 
             ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
-            if (codecBuffer != null) {
-                codecBuffer.put(frame);
-            }
+            codecBuffer.put(frame);
 
             try {
                 fileOutputStream.write(frame.array());
@@ -255,7 +293,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                 e.printStackTrace();
             }
 
-            long presentationTimeMS = System.currentTimeMillis() - startMS;
+            long presentationTimeMS = (System.nanoTime()/1000) - startUs;
 
             int flags = 0;
             // If this is the final NAL Unit we can signify the end of the stream.
@@ -283,10 +321,8 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         @Override
         protected void onPostExecute(String result){
             try{
-                synchronized (mediaCodec) {
-                    mediaCodec.stop();
-                    mediaCodec.release();
-                }
+                mediaCodec.stop();
+                mediaCodec.release();
             } catch (Exception e){
                 e.printStackTrace();
             }
@@ -331,11 +367,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     private boolean addToQueue(ByteBuffer b){
         synchronized (nalQueue){
-            if(nalQueue.size() < 100) {
-                return nalQueue.add(b);
-            } else{
-                return false;
-            }
+            return nalQueue.add(b);
         }
     }
 
