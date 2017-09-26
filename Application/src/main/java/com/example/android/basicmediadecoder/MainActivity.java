@@ -396,6 +396,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         } catch (IOException e) {
             e.printStackTrace();
         }
+        mediaCodec.release();
         super.onStop();
     }
 }
