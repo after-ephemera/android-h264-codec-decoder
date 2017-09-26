@@ -16,7 +16,7 @@
 -->
 
 <resources>
-    <string name="app_name">BasicMediaDecoder</string>
+    <string name="app_name">Decoder</string>
     <string name="intro_message">
         <![CDATA[
         

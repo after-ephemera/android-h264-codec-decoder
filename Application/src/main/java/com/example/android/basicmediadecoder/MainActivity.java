@@ -22,7 +22,6 @@ import android.animation.TimeAnimator;
 import android.app.Activity;
 import android.graphics.SurfaceTexture;
 import android.media.MediaCodec;
-import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -34,9 +33,6 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.Surface;
 import android.view.TextureView;
-
-import com.example.android.common.media.MediaCodecWrapper;
-import com.example.android.common.media.MyDataSource;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -60,9 +56,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     // A utility that wraps up the underlying input and output buffer processing operations
     // into an east to use API.
-    private MediaCodecWrapper mCodecWrapper;
     private MediaCodec mediaCodec;
-    private MediaExtractor mExtractor = new MediaExtractor();
 
     private NALParser nalParser;
     private Boolean textureReady = false;
@@ -71,7 +65,6 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     FileOutputStream fileOutputStream = null;
     DatagramSocket clientSocket;
 
-    private MyDataSource dataSource;
     private final PriorityQueue<ByteBuffer> nalQueue = new PriorityQueue<>(QUEUE_INITIAL_SIZE);
 
 
@@ -89,13 +82,10 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-        UDPInputStream inputStream;
         // Set up the UDP socket for receiving data.
         try {
             clientSocket = new DatagramSocket(1900);
-//        InputStream inputStream = getResources().openRawResource(R.raw.test);
-//            inputStream = new UDPInputStream(clientSocket);
-            nalParser = new NALParser(null);
+            nalParser = new NALParser();
         } catch (SocketException e) {
             e.printStackTrace();
         }
@@ -133,10 +123,6 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             mTimeAnimator.end();
         }
 
-        if (mCodecWrapper != null ) {
-            mCodecWrapper.stopAndRelease();
-            mExtractor.release();
-        }
     }
 
     private static final int REQUEST_EXTERNAL_STORAGE = 1;
@@ -184,15 +170,6 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
                 480, 640);
-//        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 100000);
-//        format.setInteger(MediaFormat.KEY_FRAME_RATE, 10);
-//        byte[] header_sps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x27,
-//                              (byte) 0x4D, (byte) 0x00, (byte) 0x1E, (byte) 0xAB, (byte) 0x60,
-//                              (byte) 0xF0, (byte) 0x28, (byte) 0xD3, (byte) 0x50, (byte) 0x20,
-//                              (byte) 0x20, (byte) 0x2A, (byte) 0x40, (byte) 0x80 };
-//        byte[] header_pps = { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x28,
-//                              (byte) 0xEE, (byte) 0x3C, (byte) 0x30 };
-
         NALBuffer sps;
         // Get NAL Units until an SPS unit is found.
         while(true){
