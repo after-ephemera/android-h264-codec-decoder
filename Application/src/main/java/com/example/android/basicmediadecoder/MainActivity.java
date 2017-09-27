@@ -84,7 +84,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
         // Set up the UDP socket for receiving data.
         try {
-            clientSocket = new DatagramSocket(1900);
+            clientSocket = new DatagramSocket(4446);
             nalParser = new NALParser();
         } catch (SocketException e) {
             e.printStackTrace();
@@ -168,8 +168,10 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             e.printStackTrace();
         }
 
+//        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
+//                480, 640);
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
-                480, 640);
+                1080, 1794);
         NALBuffer sps;
         // Get NAL Units until an SPS unit is found.
         while(true){
@@ -322,6 +324,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                     dPacket = new DatagramPacket(buff, 100535);
                     clientSocket.receive(dPacket);
 //                    Log.d("PacketReceiver", "Length: " + dPacket.getLength());
+                    // TODO: Change the queue to be of type NALPacket, which will include the regular datagram packet and also the current time (for presentation time).
                     addToQueue(ByteBuffer.wrap(dPacket.getData(), dPacket.getOffset(), dPacket.getLength()).duplicate());
                 } catch (IOException e) {
                     e.printStackTrace();
