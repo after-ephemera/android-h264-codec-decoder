@@ -167,7 +167,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                 packetReceiverTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
                 frameTask = new DecodeFrameTask();
                 frameTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
-//                playButton.setEnabled(false);
+                playButton.setEnabled(false);
             }
         }
         return true;
@@ -196,63 +196,39 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             while(peekQueue() == null);
             sps = nalParser.getNext(pollQueue());
             Log.d("Main", "searching for an SPS frame...");
-            if((sps.buffer.get(4) & 0x1f) == 0x07){
-                // Found SPS!
-                Log.d("Main", "Found an SPS Frame");
+            if((sps.buffer.get(4) & 0x1f) != 0x07){
+                Log.d("Main", "Not an SPS Frame");
+                continue;
+            }
+            Log.d("Main", "Found an SPS Frame");
+
+            while(peekQueue() == null);
+            NALBuffer pps = nalParser.getNext(pollQueue());
+            if((pps.buffer.get(4) & 0x1f) != 0x08){
+                Log.d("Main", "Not a PPS Frame");
+                continue;
+            }
+            Log.d("Main", "Found a PPS Frame");
+
+            format.setByteBuffer("csd-0", sps.buffer);
+            format.setByteBuffer("csd-1", pps.buffer);
+            try {
+                if(DEBUG)fileOutputStream.write(sps.buffer.array());
+                if(DEBUG)fileOutputStream.write(pps.buffer.array());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            try {
+                mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+                mediaCodec.configure(format, new Surface(mPlaybackView.getSurfaceTexture()), null, 0);
+                mediaCodec.start();
+                textureReady = true;
                 break;
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
-
-        while(peekQueue() == null);
-        NALBuffer pps = nalParser.getNext(pollQueue());
-        int size = sps.size + pps.size /*+ next.size*/;
-//        ByteBuffer trueBuffer = ByteBuffer.allocate(size);
-//        trueBuffer.put(sps.buffer.duplicate());
-//        trueBuffer.put(pps.buffer.duplicate());
-//        trueBuffer.put(next.buffer.duplicate());
-
-
-        if (sps == null) {
-            Log.e("Main", "Couldn't get NAL");
-//            throw new Exception("Failed");
-            return;
-        }
-//        ByteBuffer frame = sps.buffer.duplicate();
-
-
-        format.setByteBuffer("csd-0", sps.buffer);
-        format.setByteBuffer("csd-1", pps.buffer);
-        try {
-            if(DEBUG)fileOutputStream.write(sps.buffer.array());
-            if(DEBUG)fileOutputStream.write(pps.buffer.array());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        try {
-            mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
-            mediaCodec.configure(format, new Surface(mPlaybackView.getSurfaceTexture()), null, 0);
-            mediaCodec.start();
-            textureReady = true;
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-//        int inputIndex;
-//        while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
-////            Log.d("Main", "Input index: " + inputIndex);
-//        }
-//
-//        ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
-//        codecBuffer.put(trueBuffer);
-//
-//        mediaCodec.queueInputBuffer(inputIndex, 0, size+1, 0, MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
-//
-//        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-//        int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
-//        if (outputIndex >= 0) {
-//            mediaCodec.releaseOutputBuffer(outputIndex, true);
-//        }
 
         Log.e("Main", "CONFIG FRAMES ABOVE THIS POINT ---------------------");
 
@@ -266,13 +242,6 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                 return;
             }
 
-             //Check type and load buffer based on type.
-            try {
-//                int type = nb.buffer.get(5) & 0x1f; // Low 5 bits of the 5th byte gives the type identifier.
-//                if(type == 0x06) continue;
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
             ByteBuffer frame = nb.buffer.duplicate();
 
             int inputIndex;
@@ -290,7 +259,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                 e.printStackTrace();
             }
 
-            long presentationTimeMS = (System.nanoTime()/1000) - startUs;
+            long presentationTimeMS = (System.nanoTime()/1000) - startUs; // Don't think this is necessary.
 
             int flags = 0;
             // If this is the final NAL Unit we can signify the end of the stream.
@@ -342,7 +311,6 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                     dPacket = new DatagramPacket(buff, 100535);
                     clientSocket.receive(dPacket);
 //                    Log.d("PacketReceiver", "Length: " + dPacket.getLength());
-                    // TODO: Change the queue to be of type NALPacket, which will include the regular datagram packet and also the current time (for presentation time).
                     addToQueue(ByteBuffer.wrap(dPacket.getData(), dPacket.getOffset(), dPacket.getLength()).duplicate());
                 } catch (IOException e) {
                     e.printStackTrace();
