@@ -72,8 +72,10 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     private final int SOCKET_PORT = 1900;
 //    private final int SOCKET_PORT = 4446;
 
-    private int streamWidth = 1080;
-    private int streamHeight = 1794;
+//    private int streamWidth = 1080;
+//    private int streamHeight = 1794;
+    private int streamWidth = 360;
+    private int streamHeight = 640;
 
     private final PriorityQueue<ByteBuffer> nalQueue = new PriorityQueue<>(QUEUE_INITIAL_SIZE);
 
@@ -133,6 +135,11 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             mTimeAnimator.end();
         }
 
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
     }
 
     private static final int REQUEST_EXTERNAL_STORAGE = 1;
@@ -290,7 +297,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 //            if(nb.lastNAL){
 //                flags = MediaCodec.BUFFER_FLAG_END_OF_STREAM;
 //            }
-            mediaCodec.queueInputBuffer(inputIndex, 0, nb.size+1, presentationTimeMS, flags);
+            mediaCodec.queueInputBuffer(inputIndex, 0, nb.size+1, /*presentationTimeMS*/0, flags);
 
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
             int outputIndex = mediaCodec.dequeueOutputBuffer(info, 0);
@@ -358,6 +365,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     private boolean addToQueue(ByteBuffer b){
         synchronized (nalQueue){
+//            Log.d("Main", "Queue size: " + nalQueue.size());
             return nalQueue.add(b);
         }
     }

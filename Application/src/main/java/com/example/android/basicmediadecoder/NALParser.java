@@ -22,6 +22,7 @@ public class NALParser {
     public NALParser() {}
 
     public NALBuffer getNext(ByteBuffer currentFrame) {
+//        if(true) return new NALBuffer(currentFrame, currentFrame.limit());
         try {
 //            inputStream = new FileInputStream("test.264");
             // skip the first four bytes
