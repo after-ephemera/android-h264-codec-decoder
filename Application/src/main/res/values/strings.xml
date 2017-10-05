@@ -1,5 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
+<?xml version="1.0" encoding="utf-8"?><!--
  Copyright (C) 2013 The Android Open Source Project
 
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,4 +18,5 @@
         &#169; copyright 2008, Blender Foundation / www.bigbuckbunny.org
     </string>
     <string name="play">Play</string>
+    <string name="title_activity_splash">SplashActivity</string>
 </resources>

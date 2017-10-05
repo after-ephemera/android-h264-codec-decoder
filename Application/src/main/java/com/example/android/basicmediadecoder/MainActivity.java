@@ -76,6 +76,8 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 //    private int streamHeight = 1794;
     private int streamWidth = 360;
     private int streamHeight = 640;
+//    private int streamWidth = 750;
+//    private int streamHeight = 1334;
 
     private final PriorityQueue<ByteBuffer> nalQueue = new PriorityQueue<>(QUEUE_INITIAL_SIZE);
 
@@ -190,6 +192,8 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
 //        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
 //                1080, 1794);
+        format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
+        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 0);
         NALBuffer sps;
         // Get NAL Units until an SPS unit is found.
         while(true){
@@ -242,7 +246,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                 return;
             }
 
-            ByteBuffer frame = nb.buffer.duplicate();
+//            ByteBuffer frame = nb.buffer.duplicate();
 
             int inputIndex;
             while ((inputIndex = mediaCodec.dequeueInputBuffer(-1)) < 0) {
@@ -251,10 +255,10 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             Log.d("Main", "Final Input index: " + inputIndex);
 
             ByteBuffer codecBuffer = mediaCodec.getInputBuffer(inputIndex);
-            codecBuffer.put(frame);
+            codecBuffer.put(nb.buffer);
 
             try {
-                if(DEBUG)fileOutputStream.write(frame.array());
+                if(DEBUG)fileOutputStream.write(nb.buffer.array());
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -338,30 +342,12 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         }
     }
 
-    private int checkNALType(int type) throws Exception {
-        type = type & 0x1f;
-        System.out.println("Type: " + String.format("0x%02X", type));
-        switch(type){
-            case 0x01: // P Frame - Coded slice of a non-IDR picture (VCL)
-                break;
-            case 0x05: // I Frame - Coded slice of an IDR picture (VCL)
-                break;
-            case 0x07: // SPS Parameter - Sequence parameter set (non-VCL)
-                break;
-            case 0x08: // PPS Parameter - Picture parameter set (non-VCL)
-                break;
-            default:
-                throw new Exception("Failed to determine NAL Unit type with type number " + type);
-        }
-        return -1;
-    }
-
     @Override
     protected void onStop() {
         frameTask.cancel(true);
         packetReceiverTask.cancel(true);
         try {
-            fileOutputStream.close();
+            if(DEBUG) fileOutputStream.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
