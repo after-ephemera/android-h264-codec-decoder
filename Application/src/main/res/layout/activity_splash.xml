@@ -13,6 +13,29 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"/>
 
+    <View
+        android:id="@+id/block"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:background="@color/cardview_dark_background"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/block_angle"
+        />
+
+    <View
+        android:id="@+id/block_hidden"
+        android:layout_width="match_parent"
+        android:layout_height="82dp"/>
+
+    <View
+        android:id="@+id/block_angle"
+        android:layout_width="500dp"
+        android:layout_height="100dp"
+        android:background="@color/cardview_dark_background"
+        android:rotation="15"
+        app:layout_constraintTop_toBottomOf="@id/block_hidden"
+        />
+
     <TextView
         android:id="@+id/textView"
         android:layout_width="wrap_content"
@@ -20,11 +43,39 @@
         android:layout_marginEnd="8dp"
         android:layout_marginStart="8dp"
         android:layout_marginTop="48dp"
+        android:fontFamily="@font/open_sans_extrabold"
         android:text="CastEX"
+        android:textColor="@android:color/holo_orange_dark"
         android:textSize="32sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
+
+
+
+    <View
+        android:id="@+id/block_angle_2"
+        android:layout_width="500dp"
+        android:layout_height="100dp"
+        android:background="@color/cardview_dark_background"
+        android:rotation="15"
+        app:layout_constraintBottom_toTopOf="@id/block_hidden_2"
+        app:layout_constraintRight_toRightOf="parent"
+        />
+
+    <View
+        android:id="@+id/block_hidden_2"
+        android:layout_width="match_parent"
+        android:layout_height="25dp"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <View
+        android:id="@+id/block_2"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:background="@color/cardview_dark_background"
+        app:layout_constraintBottom_toBottomOf="parent"
+        />
 
     <TextView
         android:id="@+id/textView2"
@@ -34,7 +85,9 @@
         android:layout_marginEnd="8dp"
         android:layout_marginStart="8dp"
         android:text="enter"
+        android:textColor="@android:color/holo_orange_dark"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
+
 </android.support.constraint.ConstraintLayout>
