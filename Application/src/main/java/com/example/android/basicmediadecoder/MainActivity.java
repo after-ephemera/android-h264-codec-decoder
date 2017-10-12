@@ -235,11 +235,22 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         }
 
         Log.e("Main", "CONFIG FRAMES ABOVE THIS POINT ---------------------");
+        long totaliFrameBytes = 0;
+        long totaliFrames = 0;
 
         while(true) {
 
             while(peekQueue() == null);
-             NALBuffer nb = nalParser.getNext(pollQueue());
+            NALBuffer nb = nalParser.getNext(pollQueue());
+
+            if((nb.buffer.get(4) & 0x1f) == 0x05){
+                totaliFrameBytes += nb.buffer.limit();
+                totaliFrames++;
+                Log.d("iFrame", "Current totals - iframes: " + totaliFrames + ", bytes: " + totaliFrameBytes);
+            }
+//            nb.buffer.position(nb.buffer.position() - 4);
+            nb.buffer.rewind();
+
             if (nb == null) {
                 Log.e("Main", "Couldn't get NAL");
 //            throw new Exception("Failed");
@@ -344,14 +355,21 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     @Override
     protected void onStop() {
-        frameTask.cancel(true);
-        packetReceiverTask.cancel(true);
+        if(frameTask != null) {
+            frameTask.cancel(true);
+        }
+        if(packetReceiverTask != null) {
+            packetReceiverTask.cancel(true);
+        }
+
         try {
             if(DEBUG) fileOutputStream.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
-        mediaCodec.release();
+        if(mediaCodec != null) {
+            mediaCodec.release();
+        }
         super.onStop();
     }
 }

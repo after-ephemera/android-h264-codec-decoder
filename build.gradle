@@ -4,8 +4,9 @@ buildscript {
         google()
     }
     ext.kotlin_version = '1.1.51'
+    ext.anko_version = '0.10.1'
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.0.0-beta7'
+        classpath 'com.android.tools.build:gradle:2.3.3'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
