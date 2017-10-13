@@ -34,6 +34,7 @@ android {
     buildToolsVersion '26.0.2'
 
     defaultConfig {
+        applicationId "info.jkjensen.castex"
         minSdkVersion 23
         targetSdkVersion 26
     }

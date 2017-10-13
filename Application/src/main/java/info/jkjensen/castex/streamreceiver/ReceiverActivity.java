@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.example.android.basicmediadecoder;
+package info.jkjensen.castex.streamreceiver;
 
 
 import android.Manifest;
@@ -44,12 +44,15 @@ import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.util.PriorityQueue;
 
+import info.jkjensen.castex.R;
+
+
 /**
  * This activity uses a {@link android.view.TextureView} to render the frames of a video decoded using
  * {@link android.media.MediaCodec} API.
  */
-public class MainActivity extends Activity implements TextureView.SurfaceTextureListener {
-    private final boolean DEBUG = false;
+public class ReceiverActivity extends Activity implements TextureView.SurfaceTextureListener {
+    private final boolean DEBUG = true;
 
     private final static int QUEUE_INITIAL_SIZE = 50;
 
@@ -182,6 +185,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         File fileOut = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "testFrameOutput.h264");
         try {
+            Log.d("Main", "Writing to " + fileOut.toString());
             fileOutputStream = new FileOutputStream(fileOut, true);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -363,7 +367,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         }
 
         try {
-            if(DEBUG) fileOutputStream.close();
+            if(DEBUG && fileOutputStream != null) fileOutputStream.close();
         } catch (IOException e) {
             e.printStackTrace();
         }

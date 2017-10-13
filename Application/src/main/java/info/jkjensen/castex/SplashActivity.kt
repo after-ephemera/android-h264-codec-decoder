@@ -1,17 +1,14 @@
-package com.example.android.basicmediadecoder
+package info.jkjensen.castex
 
 import android.os.Bundle
 import android.app.Activity
-import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
-import android.provider.MediaStore
-import android.support.v7.app.AppCompatActivity
 import android.view.SurfaceHolder
+import info.jkjensen.castex.streamreceiver.ReceiverActivity
+
 import kotlinx.android.synthetic.main.activity_splash.*
 import java.io.IOException
-import android.content.res.AssetFileDescriptor
-import android.view.View
 import org.jetbrains.anko.startActivity
 
 
@@ -25,17 +22,17 @@ class SplashActivity : Activity(), SurfaceHolder.Callback {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_splash)
 
-        val path = "android.resource://" + packageName + "/" + R.raw.waves
+//        val path = "android.resource://" + packageName + "/" + R.raw.waves
 
         holder = videoView.holder
         holder?.addCallback(this)
 
         broadcastButton.setOnClickListener {
-            startActivity<MainActivity>()
+            startActivity<ReceiverActivity>()
         }
 
         receiverButton.setOnClickListener {
-            startActivity<MainActivity>()
+            startActivity<ReceiverActivity>()
         }
     }
 

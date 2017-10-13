@@ -21,4 +21,6 @@
     <string name="title_activity_splash">SplashActivity</string>
     <string name="castex">castex</string>
     <string name="enter">enter</string>
+    <string name="start_stream">start stream</string>
+    <string name="join_stream">join stream</string>
 </resources>

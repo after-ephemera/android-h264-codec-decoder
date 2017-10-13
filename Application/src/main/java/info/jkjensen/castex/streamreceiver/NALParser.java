@@ -1,7 +1,6 @@
-package com.example.android.basicmediadecoder;
+package info.jkjensen.castex.streamreceiver;
 
 import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 

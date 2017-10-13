@@ -1,4 +1,4 @@
-package com.example.android.basicmediadecoder;
+package info.jkjensen.castex.streamreceiver;
 
 import java.nio.ByteBuffer;
 
